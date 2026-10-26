@@ -536,15 +536,21 @@ fn draw_panel(app: &App, step: Step, r: Rect, buf: &mut Buffer, layout: &mut Lay
         (Some((a, b)), _) => vec![a, b],
         (None, _) => Vec::new(),
     };
-    // Each die boxed when they fit, else in a row of text.
+    // Each die boxed when they fit, else in a row of text. The widest box
+    // that fits all of them: a face and the number, the number with room,
+    // or just the number (four dice of a double at 100 columns).
     let boxed_dice = inner.width > 2 + 2 * 7;
-    let die_w = if 2 + 4 * 7 + 3 <= inner.width || shown.len() < 4 { 7 } else { 5 };
+    let n = shown.len().max(2) as u16;
+    let fits = |w: u16| n * (w + 1) - 1 <= inner.width.saturating_sub(2);
+    let die_w = if fits(7) { 7 } else if fits(5) { 5 } else { 3 };
     let dice_box = Rect::new(inner.x, y, inner.width, if boxed_dice { 7 } else { 5 });
     let lit = !left.is_empty() && !matches!(app.phase, Phase::Opening { .. });
     let d = boxed(buf, dice_box, BorderType::Plain, if lit { PRIMARY } else { BORDER });
     let d = Rect::new(d.x + 1, d.y, d.width.saturating_sub(2), d.height);
     layout.dice = dice_box;
-    put(buf, d.x, d.y, "DICE & MOVES", bold(MUTED), d.right());
+    // "DICE & MOVES", or just "DICE" where "DOUBLES!" would run into it.
+    let title = if shown.len() == 4 && 12 + 1 + 8 > d.width { "DICE" } else { "DICE & MOVES" };
+    put(buf, d.x, d.y, title, bold(MUTED), d.right());
     if shown.len() == 4 {
         put(buf, d.right().saturating_sub(8), d.y, "DOUBLES!", bold(WARNING), d.right());
     }
@@ -559,12 +565,15 @@ fn draw_panel(app: &App, step: Step, r: Rect, buf: &mut Buffer, layout: &mut Lay
         })
         .collect();
     if !faces.is_empty() && boxed_dice {
-        let boxes_w = faces.len() as u16 * (die_w + 1) - 1;
+        // A gap between dice when it leaves a margin inside the panel.
+        let k = faces.len() as u16;
+        let gap = if k * (die_w + 1) < d.width { 1 } else { 0 };
+        let boxes_w = k * (die_w + gap) - gap;
         let mut x = d.x + d.width.saturating_sub(boxes_w) / 2;
         for (text, avail) in &faces {
             let b = boxed(buf, Rect::new(x, d.y + 1, die_w, 3), BorderType::Plain, if *avail { PRIMARY } else { BORDER });
             centred(buf, b, b.y, text, if *avail { bold(TEXT) } else { fg(MUTED) });
-            x += die_w + 1;
+            x += die_w + gap;
         }
     } else if !faces.is_empty() {
         let mut x = d.x;
