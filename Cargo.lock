@@ -98,18 +98,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f2032f911046de80f0a198e0901378627c33f59ea0ac00e363d481118bd70a53"
 
 [[package]]
-name = "backgammon"
-version = "0.1.0"
-dependencies = [
- "bgsage",
- "env_logger",
- "log",
- "rand 0.9.5",
- "rand_chacha",
- "ratatui",
-]
-
-[[package]]
 name = "base64"
 version = "0.22.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -846,6 +834,18 @@ dependencies = [
  "log",
  "wasi",
  "windows-sys",
+]
+
+[[package]]
+name = "nard"
+version = "0.1.0"
+dependencies = [
+ "bgsage",
+ "env_logger",
+ "log",
+ "rand 0.9.5",
+ "rand_chacha",
+ "ratatui",
 ]
 
 [[package]]

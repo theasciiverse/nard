@@ -1,4 +1,4 @@
-BACKGAMMON
+NARD: BACKGAMMON
 
 Each side has 15 men and moves them round the board to its home board, then
 bears them off. The first to bear off all 15 wins. You play from the bottom:
@@ -68,7 +68,7 @@ OPTIONS
   --demo       the computer plays itself, game after game
   --plain      start without the braille ornament
 
-  RUST_LOG=debug backgammon 2>game.log keeps a log of the session.
+  RUST_LOG=debug nard 2>game.log keeps a log of the session.
 
 THE OPPONENT
 

@@ -5,7 +5,7 @@ default-members = ["game"]
 
 [workspace.package]
 edition = "2024"
-repository = "https://github.com/theasciiverse/backgammon"
+repository = "https://github.com/theasciiverse/nard"
 
 [profile.release]
 lto = "thin"

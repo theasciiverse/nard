@@ -158,7 +158,7 @@ pub fn band(buf: &mut Buffer, outside: Rect, field: Rect, colour: Color, wood: C
 #[cfg(test)]
 mod tests {
     /// Paints the ground alone, for a look by eye:
-    /// `CELLS=path cargo test -p backgammon ground_alone -- --ignored`.
+    /// `CELLS=path cargo test -p nard ground_alone -- --ignored`.
     #[test]
     #[ignore]
     fn ground_alone() {

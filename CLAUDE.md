@@ -1,12 +1,12 @@
-# Backgammon
+# Nard
 
-A full-screen terminal backgammon for the Asciiverse catalog, its own
+Nard: a full-screen terminal backgammon for the Asciiverse catalog, its own
 title (David, 2026-10-25), separate from the Roman Tabula in Ancient
 Games. Decided to build (David, 2026-10-25), beside chess-tui and
 termsuji (Go), which stay as they are for now. Milestone 0, the engine
 test, done 2026-10-26 (below); milestone 1, a playable money game,
 2026-10-26 (see "The game"). Own git repo, branch `main`, private at
-github.com/theasciiverse/backgammon.
+github.com/theasciiverse/nard.
 
 ## Why build it
 
@@ -95,7 +95,7 @@ Decided: bgsage (David, 2026-10-26); gnubg is not needed.
 ## The game (milestone 1, 2026-10-26)
 
 `cargo run --release` (then `-- --demo`, `-- --seed N`, `-- --help`).
-Crate `game/` (binary `backgammon`):
+Crate `game/`, package and binary `nard`:
 
 - `rules.rs`: position (each side in its own numbering, 25 bar, 0 off),
   every legal play in every hop order (most dice, the higher die), the
@@ -105,8 +105,8 @@ Crate `game/` (binary `backgammon`):
 - `ai.rs`: bgsage picks, our rules spell it. Hard 2-ply, normal 1-ply,
   easy a random play within 0.12 equity of the best and never doubles.
 - `assets.rs`: the engine files are inside the binary (15.9 MB) and
-  written once to `~/.cache/backgammon/stage11-139427d/`
-  (`BACKGAMMON_ASSETS` overrides).
+  written once to `~/.cache/nard/stage11-139427d/`
+  (`NARD_ASSETS` overrides).
 - `app.rs`: turns, the opening throw, the cube offered and answered, a
   person's play built hop by hop (one man may use both dice in one go),
   Enter to finish, Esc to take back.
@@ -157,11 +157,15 @@ bgsage's C++ engine for the computer opponent and the doubling cube.
   2026-10-26)
 - The engine test first, then the game (David, 2026-10-26)
 - The engine is bgsage (David, 2026-10-26, after the engine test)
+- The name is Nard, command `nard` (David, 2026-10-26); every
+  description still says backgammon ("Backgammon in the terminal").
+  `backgammon` is taken on Debian (`bsdgames`) and FreeBSD
+  (`games/bsdgames`) by Alan Char's BSD game; gammon and tavla were
+  turned down (ham; a mistake in Swedish).
 - Money play first: single games with the cube, gammons and backgammons
   (David, 2026-10-26)
 
 ## Open questions (David's to decide)
 
 - Matches with the cube and the Crawford rule, later or not at all
-- Name (working name: Backgammon)
 - Licence (chosen case by case)

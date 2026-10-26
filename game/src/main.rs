@@ -1,4 +1,4 @@
-//! Backgammon in the terminal, against bgsage or a friend.
+//! Nard: backgammon in the terminal, against bgsage or a friend.
 
 mod ai;
 mod app;
@@ -26,14 +26,14 @@ use ui::{Cursor, Layout, SURFACE};
 const HELP: &str = include_str!("../HELP.txt");
 
 const USAGE: &str = "\
-backgammon: backgammon in the terminal, against bgsage or a friend
+nard: backgammon in the terminal, against bgsage or a friend
 
   --seed N   throw the same dice again (the seed of a game is in the log)
   --demo     the computer plays itself, game after game
   --plain    no braille ornament (O switches it during play)
   --help     this
 
-RUST_LOG=debug backgammon 2>game.log  keeps a log of the session.";
+RUST_LOG=debug nard 2>game.log  keeps a log of the session.";
 
 const OPPONENTS: [(&str, Option<Strength>); 4] = [
     ("Sage · easy", Some(Strength::Easy)),
@@ -289,8 +289,8 @@ fn draw_start(s: &Screen, area: Rect, buf: &mut ratatui::buffer::Buffer) {
         let tw = t.chars().count() as u16;
         buf.set_stringn(inner.x + inner.width.saturating_sub(tw) / 2, inner.y + y, t, inner.width as usize, st);
     };
-    line(buf, 1, "● ○  B A C K G A M M O N  ○ ●", base.fg(primary).add_modifier(Modifier::BOLD));
-    line(buf, 2, "money play with the doubling cube", base.fg(muted));
+    line(buf, 1, "● ○  N A R D  ○ ●", base.fg(primary).add_modifier(Modifier::BOLD));
+    line(buf, 2, "backgammon · money play with the doubling cube", base.fg(muted));
     let choice = |i: usize| if s.row == i { base.fg(cursor).add_modifier(Modifier::BOLD) } else { base.fg(text) };
     let opponent = if s.computer.is_none() && OPPONENTS[s.opponent].1.is_some() { "a friend (no engine)" } else { OPPONENTS[s.opponent].0 };
     line(buf, 5, &format!("Opponent   ◀  {opponent:<20} ▶"), choice(0));
@@ -359,7 +359,7 @@ fn main() {
         screen.start_game(Instant::now());
     }
     if let Err(e) = term::run(&mut screen) {
-        eprintln!("backgammon: {e}");
+        eprintln!("nard: {e}");
         std::process::exit(1);
     }
 }
@@ -384,7 +384,7 @@ mod tests {
         let mut screen = Screen::new(5, false, Computer::load().ok(), None);
         let mut now = Instant::now();
         let start = frame(&mut screen, 100, 30);
-        assert!(ui::tests::text(&start).contains("B A C K G A M M O N"));
+        assert!(ui::tests::text(&start).contains("N A R D"));
         screen.key(KeyCode::Enter, now);
         let mut finished = 0;
         let mut over = false;

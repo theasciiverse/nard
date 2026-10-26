@@ -288,7 +288,7 @@ pub fn draw(app: &App, cursor: Cursor, ornate: bool, area: Rect, buf: &mut Buffe
 
 fn too_small(area: Rect, buf: &mut Buffer) {
     let y = area.y + area.height / 2;
-    centred(buf, area, y.saturating_sub(1), "Backgammon needs a larger terminal", bold(TEXT));
+    centred(buf, area, y.saturating_sub(1), "Nard needs a larger terminal", bold(TEXT));
     let need = format!("at least {MIN_WIDTH}×{MIN_HEIGHT}, now {}×{}", area.width, area.height);
     centred(buf, area, y + 1, &need, fg(MUTED));
 }
@@ -766,7 +766,7 @@ pub mod tests {
         }
     }
 
-    /// Prints frames for a look by eye: `cargo test -p backgammon frames -- --ignored --nocapture`.
+    /// Prints frames for a look by eye: `cargo test -p nard frames -- --ignored --nocapture`.
     #[test]
     #[ignore]
     fn frames() {

@@ -1,4 +1,4 @@
-# Backgammon
+# Nard
 
 Backgammon in the terminal, against a strong computer or a friend, on a
 board dressed like an inlaid tavla board: a brass wall, a braille-inlaid
@@ -21,15 +21,20 @@ gammons and backgammons, the score kept across the session.
 
 Options: `--seed N` (the same dice again), `--demo` (the computer plays
 itself), `--plain` (no ornament). For a session log:
-`RUST_LOG=debug backgammon 2>game.log`.
+`RUST_LOG=debug nard 2>game.log`.
 
 Build: `cargo build --release` (Rust 1.88 or newer and a C++17 compiler,
 for bgsage). One binary of about 16 MB, the engine's networks inside it;
-on first run they are written to `~/.cache/backgammon/`. On Intel and AMD
+on first run they are written to `~/.cache/nard/`. On Intel and AMD
 the engine needs a processor with AVX2 (2013 or newer).
 
 Run: `cargo run --release`, or `cargo demo` to watch the computer play
 itself (options to the game go after `--`: `cargo run --release -- --seed 7`).
+
+The name: *nard* is the Persian name of the game, the oldest of the
+backgammon family's names, and still its name from Iran to Russia
+(*nardy*). The command `backgammon` is taken by the BSD game on Debian
+and FreeBSD.
 
 ## Credits
 
