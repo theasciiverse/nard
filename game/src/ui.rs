@@ -645,6 +645,7 @@ fn draw_action(app: &App, r: Rect, buf: &mut Buffer) {
         (Phase::Done, true) => "TURN COMPLETE".to_string(),
         (Phase::Over { .. }, _) => "GAME OVER".to_string(),
         (Phase::NoMove { .. }, _) => "NO MOVE".to_string(),
+        _ if app.demo => format!("DEMO  {} to play", app.name(side)),
         _ => format!("{}'S TURN", short(&app.name(side)).to_uppercase()),
     };
     put(buf, inner.x, inner.y, &title, bold(PRIMARY), rx);
@@ -697,7 +698,11 @@ fn draw_action(app: &App, r: Rect, buf: &mut Buffer) {
         }
     }
 
-    let keys = "←→↑↓ move · Enter pick/place · Esc take back · D double · O ornament · F1 help · M menu · Q quit";
+    let keys = if app.demo {
+        "Demo: the computer plays itself · O ornament · F1 help · M menu · Q quit"
+    } else {
+        "←→↑↓ move · Enter pick/place · Esc take back · D double · O ornament · F1 help · M menu · Q quit"
+    };
     put(buf, inner.x, inner.y + 2, keys, fg(MUTED), rx);
 }
 

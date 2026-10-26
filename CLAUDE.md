@@ -90,7 +90,7 @@ Double, Double/Take, Double/Pass, with the equities), as JSON. 1- or
   chosen board back into a move (and check it is legal).
 - MPL-2.0 holds only for bgsage's files; our crates can carry any licence.
 
-Recommendation: use bgsage; gnubg is not needed as the fallback.
+Decided: bgsage (David, 2026-10-26); gnubg is not needed.
 
 ## The game (milestone 1, 2026-10-26)
 
@@ -156,13 +156,12 @@ bgsage's C++ engine for the computer opponent and the doubling cube.
 - The board scales with the terminal and stays centred (David,
   2026-10-26)
 - The engine test first, then the game (David, 2026-10-26)
+- The engine is bgsage (David, 2026-10-26, after the engine test)
 - Money play first: single games with the cube, gammons and backgammons
   (David, 2026-10-26)
 
 ## Open questions (David's to decide)
 
-- bgsage or gnubg as the engine: bgsage recommended after the engine
-  test above
 - Matches with the cube and the Crawford rule, later or not at all
 - Name (working name: Backgammon)
 - Licence (chosen case by case)

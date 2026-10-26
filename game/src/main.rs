@@ -376,8 +376,9 @@ mod tests {
         terminal.backend().buffer().clone()
     }
 
-    /// A person's game through the keys, against hard: the start screen,
-    /// throws, picking and placing, taking back, finishing turns.
+    /// A person's whole game through the keys, against hard, to the end:
+    /// the start screen, throws, picking and placing, taking back,
+    /// finishing turns, the cube; the screen drawn at every step.
     #[test]
     fn a_session_through_the_keys() {
         let mut screen = Screen::new(5, false, Computer::load().ok(), None);
@@ -386,7 +387,8 @@ mod tests {
         assert!(ui::tests::text(&start).contains("B A C K G A M M O N"));
         screen.key(KeyCode::Enter, now);
         let mut finished = 0;
-        for _ in 0..400 {
+        let mut over = false;
+        for step in 0..5000 {
             now += Duration::from_millis(700);
             screen.tick(now);
             let Mode::Play(app) = &screen.mode else { panic!("left the game") };
@@ -404,16 +406,25 @@ mod tests {
                     screen.key(KeyCode::Enter, now);
                     finished += 1;
                 }
-                Phase::Over { .. } => break,
+                Phase::Over { .. } => {
+                    over = true;
+                    break;
+                }
                 _ => {}
             }
+            let (w, h) = if step % 2 == 0 { (100, 30) } else { (190, 55) };
+            frame(&mut screen, w, h);
             if finished == 6 {
                 if let Ok(path) = std::env::var("CELLS") {
                     ui::tests::dump(&frame(&mut screen, 125, 38), &path);
                 }
             }
         }
-        assert!(finished >= 6, "only {finished} turns finished");
+        assert!(over, "the game did not end ({finished} turns finished)");
+        let Mode::Play(app) = &screen.mode else { unreachable!() };
+        assert!(app.score.iter().sum::<u32>() >= 1, "nobody scored");
+        let text = ui::tests::text(&frame(&mut screen, 125, 38));
+        assert!(text.contains("GAME OVER") && text.contains("next game"), "{text}");
         screen.key(KeyCode::Char('?'), now);
         assert!(ui::tests::text(&frame(&mut screen, 125, 38)).contains("Rules and keys"));
         screen.key(KeyCode::Esc, now);
