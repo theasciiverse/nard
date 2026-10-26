@@ -1,0 +1,3 @@
+[alias]
+# `cargo demo`: the computer plays itself.
+demo = "run --release -p backgammon -- --demo"

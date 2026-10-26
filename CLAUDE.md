@@ -4,8 +4,9 @@ A full-screen terminal backgammon for the Asciiverse catalog, its own
 title (David, 2026-10-25), separate from the Roman Tabula in Ancient
 Games. Decided to build (David, 2026-10-25), beside chess-tui and
 termsuji (Go), which stay as they are for now. Milestone 0, the engine
-test, done 2026-10-26 (below); no board or interface yet. Own git repo,
-branch `main`, private at github.com/theasciiverse/backgammon.
+test, done 2026-10-26 (below); milestone 1, a playable money game,
+2026-10-26 (see "The game"). Own git repo, branch `main`, private at
+github.com/theasciiverse/backgammon.
 
 ## Why build it
 
@@ -91,6 +92,43 @@ Double, Double/Take, Double/Pass, with the equities), as JSON. 1- or
 
 Recommendation: use bgsage; gnubg is not needed as the fallback.
 
+## The game (milestone 1, 2026-10-26)
+
+`cargo run --release` (then `-- --demo`, `-- --seed N`, `-- --help`).
+Crate `game/` (binary `backgammon`):
+
+- `rules.rs`: position (each side in its own numbering, 25 bar, 0 off),
+  every legal play in every hop order (most dice, the higher die), the
+  distinct plays with standard notation, cube, gammons and backgammons.
+  Tested against bgsage: over 3,000 positions from random games, our
+  distinct plays end on exactly bgsage's candidate boards.
+- `ai.rs`: bgsage picks, our rules spell it. Hard 2-ply, normal 1-ply,
+  easy a random play within 0.12 equity of the best and never doubles.
+- `assets.rs`: the engine files are inside the binary (15.9 MB) and
+  written once to `~/.cache/backgammon/stage11-139427d/`
+  (`BACKGAMMON_ASSETS` overrides).
+- `app.rs`: turns, the opening throw, the cube offered and answered, a
+  person's play built hop by hop (one man may use both dice in one go),
+  Enter to finish, Esc to take back.
+- `ui.rs`: Hadidi's look, in four sizes by terminal width (points 5, 7 or
+  9 wide), more men shown on taller terminals, centred; 100x26 at least.
+  Owned cube in the owner's half of the tray, centred cube on the bar.
+  Dressed as a tavla board: double brass wall, walnut field, points
+  painted ivory and crimson in turn, a wood bar.
+- `ornament.rs`: braille decoration (2x4 dots a cell, near-square dots):
+  a rim of linked lozenges inside the wall, and round the board on large
+  terminals a ground of eight-pointed stars (khatam) in dim brass and
+  turquoise. O toggles it, `--plain` starts without; some fonts draw
+  braille thin.
+- Running: `cargo run --release -- --demo` (game options after `--`), or
+  `cargo demo`.
+- `term.rs`, `main.rs`: the loop, start screen, F1 help (`HELP.txt`).
+  crossterm can deliver Esc joined to the next key as Alt+key, so Alt+key
+  is taken as Esc then the key.
+
+Not yet: themes, bigger men on the larger sizes, the Jacoby rule, matches,
+saving a game.
+
 ## The plan so far
 
 The look: David likes Hadidi's Backgammon TUI (2026-10-25): the board on
@@ -101,11 +139,10 @@ drawing may be followed or ported, crediting Pouya Hadidi; its demo GIF
 is in the repo. Its rules engine (`src/core/rules/BackgammonRules.ts`,
 maximal move sequences) can be checked against ours.
 
-A Rust + Ratatui board in that look, with the conveniences the Ancient
-Games have (keys and mouse, F1 help, `--demo`, `--seed`) but not their
-graphical style, driving bgsage's C++ engine for the
-computer opponent and the doubling cube; GNU Backgammon's engine (GPL)
-as the fallback if bgsage proves hard to embed.
+A Rust + Ratatui board in that look, scaling with the terminal (100x30
+at the least, larger points and more men shown on larger screens) and
+always centred; keys and mouse, F1 help, `--demo`, `--seed`; driving
+bgsage's C++ engine for the computer opponent and the doubling cube.
 
 ## Settled
 
@@ -114,6 +151,10 @@ as the fallback if bgsage proves hard to embed.
 - A graphical style of its own, clearly different from the Ancient
   Games, led by Hadidi's Backgammon TUI, whose look David likes (see
   "The look" above; David, 2026-10-25)
+- Freestanding: zero dependency on ancient-games, in code, UI and
+  style; nothing shared or copied, a new take (David, 2026-10-26)
+- The board scales with the terminal and stays centred (David,
+  2026-10-26)
 - The engine test first, then the game (David, 2026-10-26)
 - Money play first: single games with the cube, gammons and backgammons
   (David, 2026-10-26)

@@ -1,0 +1,14 @@
+[package]
+name = "backgammon"
+version = "0.1.0"
+description = "Backgammon in the terminal, against bgsage or a friend"
+edition.workspace = true
+repository.workspace = true
+
+[dependencies]
+bgsage = { path = "../bgsage" }
+ratatui = "0.30"
+rand = "0.9"
+rand_chacha = "0.9"
+log = "0.4"
+env_logger = "0.11"

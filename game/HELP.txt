@@ -1,0 +1,82 @@
+BACKGAMMON
+
+Each side has 15 men and moves them round the board to its home board, then
+bears them off. The first to bear off all 15 wins. You play from the bottom:
+your men travel from the top right (24) across the top, down the left and
+along the bottom into your home board at the bottom right (points 1-6).
+
+THE THROW
+
+  At the start each side throws one die; the higher plays first, using both
+  numbers. After that, each turn begins with a throw of two dice.
+
+  Each die moves one man that many points; one man may use both. Doubles
+  are played four times. A man may land on any point not held by two or more
+  of the other side's men.
+
+  You must use both dice if you can. If only one can be used, use the higher
+  if you can. If neither can be used, the turn passes.
+
+HITTING AND ENTERING
+
+  A lone man on a point (a blot) is hit when a man of the other side lands
+  there: it goes to the bar. A man on the bar must enter in the other side's
+  home board before any other man may move, on the point its die names
+  (a 1 on the 24 point, a 6 on the 19), if that point is open.
+
+BEARING OFF
+
+  Once all 15 of your men are in your home board, a die bears off a man from
+  the point it names. A higher die bears off from the highest point when no
+  man stands further back. You may also move inside the home board instead.
+
+THE CUBE AND THE SCORE
+
+  A game is worth the value of the cube, which starts at 1 in the middle.
+  Before throwing, the side to move may double. The other side either takes,
+  and owns the cube at twice the value (only the owner may double next), or
+  passes and loses the game at the value before the double.
+
+  A gammon (the loser has borne off no men) counts double; a backgammon (the
+  loser has none off and a man on the bar or in the winner's home board)
+  counts triple. The score is kept across games for the session.
+
+KEYS
+
+  Arrows or h j k l     move the cursor on the board
+  Enter or Space        throw; pick up a man, or put it down
+  A S F G Z X ...       pick up a man listed in the panel below the board
+  1 - 9                 put the picked man on a listed point
+  Esc, U or Backspace   put the man back down, or take back a move
+  Enter                 finish the turn, once all dice are used
+  D                     double, before throwing
+  Y or N                take or pass a double
+  O                     the braille ornament on or off
+  M                     back to the menu
+  F1 or ?               these rules
+  Q                     quit
+
+  The mouse works too: click a man to pick it up, a lit point to put it
+  down, anywhere to throw, and the dice to finish the turn.
+
+  A man can travel with both dice in one go: pick it up and choose the point
+  where it ends; the computer works out the way.
+
+OPTIONS
+
+  --seed N     throw the same dice again
+  --demo       the computer plays itself, game after game
+  --plain      start without the braille ornament
+
+  RUST_LOG=debug backgammon 2>game.log keeps a log of the session.
+
+THE OPPONENT
+
+  The computer is bgsage (Open Sage) by Mark Higgins, a neural-network
+  engine under the Mozilla Public License 2.0. Hard looks two plies ahead,
+  normal one; easy picks among the plays close to the best and never doubles.
+
+THANKS
+
+  The board, side panel and colours follow Backgammon TUI by Pouya Hadidi
+  (MIT licence).
