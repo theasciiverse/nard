@@ -8,6 +8,13 @@ test, done 2026-10-26 (below); milestone 1, a playable money game,
 2026-10-26 (see "The game"). Own git repo, branch `main`, private at
 github.com/theasciiverse/nard.
 
+On the website mockup since 2026-10-26 with the NEW! banner: an entry in
+`websites/Asciiverse/dev/mock-titles.toml` (original game, licence not
+chosen, so not in `hub/catalog` yet), preview `asciiverse/nard.cast`
+(`asciiverse/record-preview.sh`, hub's `castrec.py`: `--demo --seed 1`,
+45 s, still at 24 s) copied to the site's `casts/`, local Linux build
+packaged by the site's `dev/build_catalog.py` into `dev-releases/`.
+
 ## Why build it
 
 Checked 2026-10-25 (web, GitHub, the projects' own pages and code): the
