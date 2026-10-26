@@ -508,7 +508,12 @@ fn draw_panel(app: &App, step: Step, r: Rect, buf: &mut Buffer, layout: &mut Lay
         let on_turn = side == to_move && !matches!(app.phase, Phase::Opening { .. } | Phase::Over { .. });
         let card = boxed(buf, Rect::new(inner.x, y, inner.width, 4), BorderType::Plain, if on_turn { CURSOR } else { BORDER });
         let card = Rect::new(card.x + 1, card.y, card.width.saturating_sub(2), card.height);
-        put(buf, card.x, card.y, &format!("{} {}", man_glyph(side), app.name(side)), bold(man_colour(side)), card.right());
+        // The full name ("Black (normal)") when it fits beside the turn
+        // marker, else the short one.
+        let name = app.name(side);
+        let room = card.width.saturating_sub(if on_turn { 7 } else { 0 }) as usize;
+        let name = if name.chars().count() + 2 <= room { name.as_str() } else { short(&name) };
+        put(buf, card.x, card.y, &format!("{} {}", man_glyph(side), name), bold(man_colour(side)), card.right());
         if on_turn {
             put(buf, card.right() - 6, card.y, "◀ TURN", bold(PRIMARY), card.right());
         }
@@ -577,7 +582,13 @@ fn draw_panel(app: &App, step: Step, r: Rect, buf: &mut Buffer, layout: &mut Lay
         _ if left.is_empty() => ("✓ all dice used".into(), MUTED),
         _ => (format!("{} move{} left", left.len(), if left.len() == 1 { "" } else { "s" }), LEGAL),
     };
-    centred(buf, d, d.bottom() - 1, &note.0, bold(note.1));
+    // Shorter words where the panel is narrow (100 columns).
+    let text = match note.0.as_str() {
+        "► Space to throw" if note.0.chars().count() > d.width as usize => "► Space: throw".into(),
+        "✓ all dice used" if note.0.chars().count() > d.width as usize => "✓ dice used".into(),
+        _ => note.0,
+    };
+    centred(buf, d, d.bottom() - 1, &text, bold(note.1));
     y += dice_box.height + 1;
 
     // The cube and the score.
@@ -585,9 +596,16 @@ fn draw_panel(app: &App, step: Step, r: Rect, buf: &mut Buffer, layout: &mut Lay
         None => "centred".to_string(),
         Some(s) => format!("{}'s", app.name(s)).replace("You's", "yours"),
     };
+    let cube_x = inner.x + 8 + cube_text(app.cube.value).len() as u16;
+    let cube = match app.cube.owner {
+        Some(s) if cube.chars().count() > rx.saturating_sub(cube_x) as usize => {
+            format!("{}'s", short(&app.name(s))).replace("You's", "yours")
+        }
+        _ => cube,
+    };
     put(buf, inner.x, y, "CUBE", bold(MUTED), rx);
     put(buf, inner.x + 7, y, &cube_text(app.cube.value), cube_style(), rx);
-    put(buf, inner.x + 8 + cube_text(app.cube.value).len() as u16, y, &cube, fg(TEXT), rx);
+    put(buf, cube_x, y, &cube, fg(TEXT), rx);
     y += 1;
     put(buf, inner.x, y, "SCORE", bold(MUTED), rx);
     let mut x = inner.x + 7;
