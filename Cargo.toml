@@ -1,0 +1,11 @@
+[workspace]
+resolver = "3"
+members = ["bgsage-sys", "bgsage"]
+
+[workspace.package]
+edition = "2024"
+repository = "https://github.com/theasciiverse/backgammon"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1

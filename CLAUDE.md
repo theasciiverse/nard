@@ -3,9 +3,9 @@
 A full-screen terminal backgammon for the Asciiverse catalog, its own
 title (David, 2026-10-25), separate from the Roman Tabula in Ancient
 Games. Decided to build (David, 2026-10-25), beside chess-tui and
-termsuji (Go), which stay as they are for now. Not started: this folder
-and these notes only, no code yet. Own git repo, branch `main`, private
-at github.com/theasciiverse/backgammon.
+termsuji (Go), which stay as they are for now. Milestone 0, the engine
+test, done 2026-10-26 (below); no board or interface yet. Own git repo,
+branch `main`, private at github.com/theasciiverse/backgammon.
 
 ## Why build it
 
@@ -57,6 +57,40 @@ have no real opponent.
   `gnubg` binary 1.9 MB (with the GTK interface). Its data package is
   7.1 MB to download, mostly manuals, sounds and translations.
 
+## Engine test (milestone 0, 2026-10-26)
+
+bgsage builds and plays from Rust with no Python and no CMake. It has a C
+interface of its own, `cpp/src/mobile.cpp` / `mobile.h` (added
+2026-09-07): create an engine from weight paths, then ask for every legal
+play of a roll ranked by cubeful equity, or for a cube decision (No
+Double, Double/Take, Double/Pass, with the equities), as JSON. 1- or
+2-ply only, a time budget of at most 1000 ms per call.
+
+- Layout: `vendor/bgsage` (pinned copy, see its `VENDORED.md`; 14 MB, of
+  which 12.5 MB is networks and the bearoff database), `bgsage-sys` (a
+  `build.rs` that compiles the C++ with the `cc` crate, and the FFI
+  declarations), `bgsage` (safe `Engine`: `load`, `plays`,
+  `cube_decision`), `bgsage/examples/probe.rs`.
+- Measured on this machine (8 cores): the C++ compiles in about 11 s;
+  the probe binary is 1.1 MB (0.9 MB stripped), linking only libstdc++
+  and libc; the engine loads in 30 ms; a play takes 0.14 ms at 1-ply and
+  26 ms at 2-ply from the opening position; a cube decision 0.01 ms at
+  1-ply and 1-13 ms at 2-ply.
+- Play: for the 15 opening rolls it picks the book play or a modern
+  near-equal one (2-ply: 46 24/18 13/9, 52 24/22 13/8, 43 24/21 13/9).
+  The cube answers were right on four test positions: the opening (no
+  double), an 81-89 race (double/take), a near-certain win (double/pass)
+  and a likely gammon (too good to double).
+- Catch: on x86 the networks are always compiled for AVX2
+  (`neural_net.cpp` defines `BGBOT_USE_AVX2` on any x86), so the game needs
+  an x86 CPU from about 2013 on, or ARM. A scalar path would mean patching
+  their file.
+- The engine answers in boards, not moves: our rules code must turn the
+  chosen board back into a move (and check it is legal).
+- MPL-2.0 holds only for bgsage's files; our crates can carry any licence.
+
+Recommendation: use bgsage; gnubg is not needed as the fallback.
+
 ## The plan so far
 
 The look: David likes Hadidi's Backgammon TUI (2026-10-25): the board on
@@ -80,11 +114,14 @@ as the fallback if bgsage proves hard to embed.
 - A graphical style of its own, clearly different from the Ancient
   Games, led by Hadidi's Backgammon TUI, whose look David likes (see
   "The look" above; David, 2026-10-25)
+- The engine test first, then the game (David, 2026-10-26)
+- Money play first: single games with the cube, gammons and backgammons
+  (David, 2026-10-26)
 
 ## Open questions (David's to decide)
 
-- bgsage or gnubg as the engine, after trying to build bgsage's C++ core
-  without Python
-- Money play, matches with the cube and the Crawford rule, or both
+- bgsage or gnubg as the engine: bgsage recommended after the engine
+  test above
+- Matches with the cube and the Crawford rule, later or not at all
 - Name (working name: Backgammon)
 - Licence (chosen case by case)

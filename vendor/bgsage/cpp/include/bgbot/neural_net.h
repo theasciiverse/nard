@@ -1,0 +1,665 @@
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (C) 2026 Mark Higgins
+#pragma once
+
+#include "strategy.h"
+#include "encoding.h"
+#include "board.h"
+#include <vector>
+#include <string>
+#include <cstdint>
+#include <memory>
+#include <array>
+#include <mutex>
+
+namespace bgbot {
+
+constexpr int NN_INPUTS  = TESAURO_INPUTS;  // 196 (legacy, for backward compat)
+constexpr int NN_OUTPUTS = NUM_OUTPUTS;     // 5: P(win), P(gw), P(bw), P(gl), P(bl)
+
+class NeuralNetwork {
+public:
+    // Construct with random weights drawn from normal(0, eps).
+    explicit NeuralNetwork(int n_hidden = 120,
+                           int n_inputs = NN_INPUTS,
+                           float eps = 0.1f,
+                           uint32_t seed = 42);
+
+    // ----- Inference (const, thread-safe) -----
+
+    // Forward pass: inputs -> 5 sigmoid outputs.
+    // `inputs` must point to at least n_inputs_ floats.
+    std::array<float, NN_OUTPUTS> forward(const float* inputs) const;
+
+    // Overload for std::array<float, 196> backward compat
+    std::array<float, NN_OUTPUTS> forward(
+        const std::array<float, NN_INPUTS>& inputs) const {
+        return forward(inputs.data());
+    }
+
+    // Batch forward pass: evaluate multiple input vectors at once.
+    // Each input is n_inputs_ floats, stored contiguously (stride = n_inputs_).
+    void forward_batch(const float* inputs_array,
+                       std::array<float, NN_OUTPUTS>* outputs_array,
+                       int count) const;
+
+    // Incremental (delta) evaluation: saves pre-sigmoid hidden sums and input
+    // vector for the first candidate, then for subsequent candidates only applies
+    // the input delta. This is much faster when most inputs don't change between
+    // candidates (typical in backgammon: a move changes ~4-8 of 196/244 inputs).
+    //
+    // forward_save_base: full forward pass, but also saves pre-sigmoid hidden sums
+    // and input vector into caller-provided buffers.
+    //   saved_base: must be at least n_hidden_ floats (pre-sigmoid hidden sums)
+    //   saved_inputs: must be at least n_inputs_ floats (input vector copy)
+    std::array<float, NN_OUTPUTS> forward_save_base(
+        const float* inputs, float* saved_base, float* saved_inputs) const;
+
+    // forward_from_base: incremental forward using saved base. Computes delta
+    // between new inputs and saved_inputs, applies delta to saved_base (copied
+    // internally), applies sigmoid, then output layer.
+    //   inputs: new input vector (n_inputs_ floats)
+    //   saved_base: pre-sigmoid hidden sums from forward_save_base
+    //   saved_inputs: input vector from forward_save_base
+    // Both saved_base and saved_inputs are NOT modified.
+    std::array<float, NN_OUTPUTS> forward_from_base(
+        const float* inputs, const float* saved_base, const float* saved_inputs) const;
+
+    // Ensure transposed hidden weights are up-to-date for forward().
+    // Rebuilt lazily after td_update() invalidates them.
+    // Thread-safe: multiple threads may call this concurrently during benchmark
+    // scoring; the mutex ensures only one thread rebuilds.
+    void ensure_transposed_weights() const {
+        if (!transposed_weights_valid_) {
+            std::lock_guard<std::mutex> lock(transposed_weights_mutex_);
+            if (!transposed_weights_valid_) {  // double-check after acquiring lock
+                build_transposed_weights();
+                transposed_weights_valid_ = true;
+            }
+        }
+    }
+
+    // Mark transposed weights as stale (call after modifying hidden_weights_).
+    void invalidate_transposed_weights() { transposed_weights_valid_ = false; }
+
+    // Legacy overload for std::array<float, 196>
+    void forward_batch(
+        const std::array<float, NN_INPUTS>* inputs_array,
+        std::array<float, NN_OUTPUTS>* outputs_array,
+        int count) const {
+        forward_batch(reinterpret_cast<const float*>(inputs_array), outputs_array, count);
+    }
+
+    // Compute equity from 5 output probabilities.
+    // Delegates to the free function compute_equity() in strategy.h.
+    static double compute_equity(const std::array<float, NN_OUTPUTS>& outputs) {
+        return bgbot::compute_equity(outputs);
+    }
+
+    // ----- Training (mutating, NOT thread-safe) -----
+
+    // Forward pass that caches all intermediate values for td_update().
+    // `inputs` must point to at least n_inputs_ floats.
+    std::array<float, NN_OUTPUTS> forward_with_gradients(const float* inputs);
+
+    // Overload for backward compat
+    std::array<float, NN_OUTPUTS> forward_with_gradients(
+        const std::array<float, NN_INPUTS>& inputs) {
+        return forward_with_gradients(inputs.data());
+    }
+
+    // Apply TD weight update using cached gradients from forward_with_gradients().
+    void td_update(const std::array<float, NN_OUTPUTS>& targets, float alpha);
+
+    // ----- Persistence -----
+
+    // Save weights in binary format.
+    // Format: [int32 n_hidden] [int32 n_inputs] [int32 n_outputs]
+    //         [n_hidden*(n_inputs+1) floats: hidden weights row-major]
+    //         [n_outputs*(n_hidden+1) floats: output weights row-major]
+    bool save_weights(const std::string& filepath) const;
+
+    // Load weights from binary file. n_inputs in file must match n_inputs_.
+    bool load_weights(const std::string& filepath);
+
+    int n_hidden() const { return n_hidden_; }
+    int n_inputs() const { return n_inputs_; }
+
+    // Direct weight access (for weight transfer between networks)
+    const std::vector<float>& hidden_weights() const { return hidden_weights_; }
+    const std::vector<float>& output_weights() const { return output_weights_; }
+    std::vector<float>& hidden_weights() { return hidden_weights_; }
+    std::vector<float>& output_weights() { return output_weights_; }
+
+private:
+    int n_hidden_;
+    int n_inputs_;
+
+    // Weight matrices stored as flat vectors (row-major).
+    // hidden_weights_: shape [n_hidden, n_inputs_+1]  (last column = bias)
+    // output_weights_: shape [NN_OUTPUTS, n_hidden+1]  (last column = bias)
+    std::vector<float> hidden_weights_;
+    std::vector<float> output_weights_;
+
+    // Transposed hidden weights for fast column access in forward_from_base.
+    // hidden_weights_T_: shape [n_inputs_, n_hidden]  (no bias column)
+    // Column i of hidden_weights_ (stride n_inputs_+1) becomes row i of this.
+    // Built lazily on first forward_from_base call, or after load_weights.
+    mutable std::vector<float> hidden_weights_T_;
+    // Cached hidden bias vector (contiguous copy for fast memcpy initialization)
+    mutable std::vector<float> hidden_biases_;
+    mutable volatile bool transposed_weights_valid_ = false;
+    mutable std::mutex transposed_weights_mutex_;
+    void build_transposed_weights() const;
+
+    // ----- Cached state for training (set by forward_with_gradients) -----
+    std::vector<float> cached_inputs_;            // size n_inputs_
+    std::vector<float> cached_hiddens_;           // size n_hidden+1 (last = 1.0 bias)
+    std::array<float, NN_OUTPUTS> cached_outputs_;
+    std::array<float, NN_OUTPUTS> cached_prods_;  // outputs * (1 - outputs)
+    std::vector<float> cached_hprods_;            // size n_hidden: hiddens * (1-hiddens)
+
+    // Index helpers for flat weight arrays
+    float& hw(int h, int i)       { return hidden_weights_[h * (n_inputs_ + 1) + i]; }
+    float  hw(int h, int i) const { return hidden_weights_[h * (n_inputs_ + 1) + i]; }
+    float& ow(int o, int h)       { return output_weights_[o * (n_hidden_ + 1) + h]; }
+    float  ow(int o, int h) const { return output_weights_[o * (n_hidden_ + 1) + h]; }
+};
+
+
+// Strategy subclass that uses a NeuralNetwork for position evaluation.
+class NNStrategy : public Strategy {
+public:
+    using Strategy::best_move_index;  // inherit Board overload
+
+    // Construct from a shared NeuralNetwork.
+    explicit NNStrategy(std::shared_ptr<NeuralNetwork> nn);
+
+    // Construct by loading weights from a file.
+    explicit NNStrategy(const std::string& weights_path, int n_hidden = 120,
+                        int n_inputs = NN_INPUTS);
+
+    // Evaluate a post-move board. Returns equity.
+    double evaluate(const Board& board, bool pre_move_is_race) const override;
+
+    // Returns the 5 raw NN output probabilities.
+    std::array<float, NN_OUTPUTS> evaluate_probs(
+        const Board& board, bool pre_move_is_race) const override;
+
+    // Batched best_move_index
+    int best_move_index(const std::vector<Board>& candidates,
+                        bool pre_move_is_race) const override;
+
+    NeuralNetwork& network() { return *nn_; }
+    const NeuralNetwork& network() const { return *nn_; }
+    std::shared_ptr<NeuralNetwork> network_ptr() { return nn_; }
+
+private:
+    std::shared_ptr<NeuralNetwork> nn_;
+};
+
+
+// Position type classification
+enum class PosType { CONTACT, CRASHED, RACE };
+
+inline PosType classify_position(const Board& board) {
+    if (is_race(board)) return PosType::RACE;
+    if (is_crashed(board)) return PosType::CRASHED;
+    return PosType::CONTACT;
+}
+
+
+// Strategy that uses three separate neural networks for contact, crashed, and race.
+class MultiNNStrategy : public Strategy {
+public:
+    using Strategy::best_move_index;  // inherit Board overload
+
+    // Construct with three networks. crashed_nn can be null (falls back to contact_nn).
+    MultiNNStrategy(std::shared_ptr<NeuralNetwork> contact_nn,
+                    std::shared_ptr<NeuralNetwork> crashed_nn,
+                    std::shared_ptr<NeuralNetwork> race_nn);
+
+    // Construct from weight files (contact + race only, crashed = contact)
+    MultiNNStrategy(const std::string& contact_weights,
+                    const std::string& race_weights,
+                    int n_hidden = 120);
+
+    // Full constructor with all three weight files (same hidden size)
+    MultiNNStrategy(const std::string& contact_weights,
+                    const std::string& crashed_weights,
+                    const std::string& race_weights,
+                    int n_hidden = 120);
+
+    // Full constructor with all three weight files and separate hidden sizes
+    MultiNNStrategy(const std::string& contact_weights,
+                    const std::string& crashed_weights,
+                    const std::string& race_weights,
+                    int n_hidden_contact,
+                    int n_hidden_crashed,
+                    int n_hidden_race);
+
+    double evaluate(const Board& board, bool pre_move_is_race) const override;
+
+    std::array<float, NN_OUTPUTS> evaluate_probs(
+        const Board& board, bool pre_move_is_race) const override;
+
+    int best_move_index(const std::vector<Board>& candidates,
+                        bool pre_move_is_race) const override;
+
+    std::shared_ptr<NeuralNetwork> contact_nn() { return contact_nn_; }
+    std::shared_ptr<NeuralNetwork> crashed_nn() { return crashed_nn_; }
+    std::shared_ptr<NeuralNetwork> race_nn() { return race_nn_; }
+
+private:
+    std::shared_ptr<NeuralNetwork> contact_nn_;
+    std::shared_ptr<NeuralNetwork> crashed_nn_;  // may be null (use contact_nn)
+    std::shared_ptr<NeuralNetwork> race_nn_;
+
+    double evaluate_with_nn(const Board& board, PosType ptype) const;
+    std::array<float, NN_OUTPUTS> probs_with_nn(const Board& board, PosType ptype) const;
+    const NeuralNetwork& select_nn(PosType ptype) const;
+};
+
+
+// Strategy that uses five separate neural networks based on game plan classification:
+// PureRace (80h, 196 inputs), Racing/Attacking/Priming/Anchoring (120h, 214 inputs).
+class GamePlanStrategy : public Strategy {
+public:
+    GamePlanStrategy(std::shared_ptr<NeuralNetwork> purerace_nn,
+                     std::shared_ptr<NeuralNetwork> racing_nn,
+                     std::shared_ptr<NeuralNetwork> attacking_nn,
+                     std::shared_ptr<NeuralNetwork> priming_nn,
+                     std::shared_ptr<NeuralNetwork> anchoring_nn);
+
+    GamePlanStrategy(const std::string& purerace_weights,
+                     const std::string& racing_weights,
+                     const std::string& attacking_weights,
+                     const std::string& priming_weights,
+                     const std::string& anchoring_weights,
+                     int n_hidden_purerace = 80,
+                     int n_hidden_racing = 120,
+                     int n_hidden_attacking = 120,
+                     int n_hidden_priming = 120,
+                     int n_hidden_anchoring = 120);
+
+    // Construct from vectors (length 5 each), matching pair strategy API.
+    // Order: [purerace, racing, attacking, priming, anchoring].
+    GamePlanStrategy(const std::vector<std::string>& weight_paths,
+                     const std::vector<int>& hidden_sizes);
+
+    double evaluate(const Board& board, bool pre_move_is_race) const override;
+
+    std::array<float, NN_OUTPUTS> evaluate_probs(
+        const Board& board, bool pre_move_is_race) const override;
+    std::array<float, NN_OUTPUTS> evaluate_probs(
+        const Board& board, const Board& pre_move_board) const override;
+
+    int best_move_index(const std::vector<Board>& candidates,
+                        bool pre_move_is_race) const override;
+
+    // Override: classify pre-move board's game plan and use that NN for all candidates
+    int best_move_index(const std::vector<Board>& candidates,
+                        const Board& pre_move_board) const override;
+
+    std::shared_ptr<NeuralNetwork> purerace_nn() { return purerace_nn_; }
+    std::shared_ptr<NeuralNetwork> racing_nn() { return racing_nn_; }
+    std::shared_ptr<NeuralNetwork> attacking_nn() { return attacking_nn_; }
+    std::shared_ptr<NeuralNetwork> priming_nn() { return priming_nn_; }
+    std::shared_ptr<NeuralNetwork> anchoring_nn() { return anchoring_nn_; }
+
+    int evaluate_candidates_equity(
+        const std::vector<Board>& candidates,
+        const Board& pre_move_board,
+        double* equities) const override;
+
+    int batch_evaluate_candidates_equity(
+        const std::vector<Board>& candidates,
+        const Board& pre_move_board,
+        double* equities) const override;
+
+    int batch_evaluate_candidates_equity_probs(
+        const std::vector<Board>& candidates,
+        const Board& pre_move_board,
+        double* equities,
+        std::array<float, NUM_OUTPUTS>* probs_out) const override;
+
+    int batch_evaluate_candidates_best_prob(
+        const std::vector<Board>& candidates,
+        const Board& pre_move_board,
+        double* equities,
+        std::array<float, NUM_OUTPUTS>* best_probs_out) const override;
+
+private:
+    std::shared_ptr<NeuralNetwork> purerace_nn_;
+    std::shared_ptr<NeuralNetwork> racing_nn_;
+    std::shared_ptr<NeuralNetwork> attacking_nn_;
+    std::shared_ptr<NeuralNetwork> priming_nn_;
+    std::shared_ptr<NeuralNetwork> anchoring_nn_;
+
+    double evaluate_with_nn(const Board& board, GamePlan gp) const;
+    std::array<float, NN_OUTPUTS> probs_with_nn(const Board& board, GamePlan gp) const;
+    const NeuralNetwork& select_nn(GamePlan gp) const;
+};
+
+// ---------------------------------------------------------------------------
+// GamePlanPairStrategy: 17-NN strategy using ordered (player, opponent) pairs
+// ---------------------------------------------------------------------------
+// 1 PureRace NN + 16 contact NNs, one per (player_plan, opponent_plan) pair.
+// Selection: classify player's plan from board, opponent's plan from flip(board),
+// look up the (player, opponent) pair NN.
+
+class GamePlanPairStrategy : public Strategy {
+public:
+    // Construct from vectors of weight paths and hidden sizes (length 17 each).
+    // Index 0 = PureRace, indices 1-16 = contact pairs.
+    GamePlanPairStrategy(const std::vector<std::string>& weight_paths,
+                         const std::vector<int>& hidden_sizes);
+
+    // Construct from pre-built NNs (used by TD training).
+    explicit GamePlanPairStrategy(
+        std::array<std::shared_ptr<NeuralNetwork>, NUM_PAIR_NNS> nns);
+
+    double evaluate(const Board& board, bool pre_move_is_race) const override;
+
+    std::array<float, NN_OUTPUTS> evaluate_probs(
+        const Board& board, bool pre_move_is_race) const override;
+    std::array<float, NN_OUTPUTS> evaluate_probs(
+        const Board& board, const Board& pre_move_board) const override;
+
+    int best_move_index(const std::vector<Board>& candidates,
+                        bool pre_move_is_race) const override;
+    int best_move_index(const std::vector<Board>& candidates,
+                        const Board& pre_move_board) const override;
+
+    int evaluate_candidates_equity(
+        const std::vector<Board>& candidates,
+        const Board& pre_move_board,
+        double* equities) const override;
+
+    int batch_evaluate_candidates_equity(
+        const std::vector<Board>& candidates,
+        const Board& pre_move_board,
+        double* equities) const override;
+
+    int batch_evaluate_candidates_equity_probs(
+        const std::vector<Board>& candidates,
+        const Board& pre_move_board,
+        double* equities,
+        std::array<float, NUM_OUTPUTS>* probs_out) const override;
+
+    int batch_evaluate_candidates_best_prob(
+        const std::vector<Board>& candidates,
+        const Board& pre_move_board,
+        double* equities,
+        std::array<float, NUM_OUTPUTS>* best_probs_out) const override;
+
+    std::shared_ptr<NeuralNetwork> nn(int idx) const { return nns_[idx]; }
+
+    // Public accessor for the per-board NN selection (used by the cubeful
+    // evaluation engine's batched candidate kernel to group candidates by NN).
+    int nn_index_for(const Board& board) const { return select_nn_idx(board); }
+
+    // Raw-NN probs for a board given an NN index. Public for symmetry with
+    // BackgameAwarePairStrategy so the cubeful engine's templated kernel
+    // compiles against both classes (its blend-sentinel branch is dead here).
+    std::array<float, NN_OUTPUTS> probs_with_nn(const Board& board, int nn_idx) const;
+
+private:
+    std::array<std::shared_ptr<NeuralNetwork>, NUM_PAIR_NNS> nns_;
+
+    // Determine which NN to use for a board position.
+    // Returns 0 for purerace, 1-16 for contact pairs.
+    int select_nn_idx(const Board& board) const;
+
+    double evaluate_with_nn(const Board& board, int nn_idx) const;
+    bool is_purerace_nn(int nn_idx) const { return nn_idx == 0; }
+};
+
+// ---------------------------------------------------------------------------
+// BackgameAwarePairStrategy: 19-NN pair strategy with backgame detection
+// ---------------------------------------------------------------------------
+// Extends the 17-NN pair strategy with 2 additional NNs for back games:
+//   Index 17: player back game (replaces anch_race when backgame detected)
+//   Index 18: opponent back game (replaces race_anch when backgame detected)
+//
+// Backgame detection criteria:
+// - Player BG: pair is (anchoring, racing), player pips > opponent pips,
+//   player has >= 2 anchors in opponent's home board (points 19-24)
+// - Opponent BG: pair is (racing, anchoring), opponent pips > player pips,
+//   opponent has >= 2 anchors in player's home board (points 1-6)
+//
+// Optional gated blended hybrid (21 NNs, e.g. Stage 10): two extra backgame
+// NNs at indices 19 (player) and 20 (opponent), trained on Paskogammon
+// backgame rollouts. When 21 NNs are loaded, a detected backgame is checked
+// against a precision GATE that isolates the deep/massive backgames where the
+// Paskogammon nets are demonstrably stronger:
+//   gate = anchors >= 3
+//          OR (anchors == 2 AND back checkers >= ARM2_BC AND pips >= ARM2_PIPS)
+// (anchors/back checkers/pips are the backgame side's). OUTSIDE the gate the
+// eval is bit-identical to Stage 9 (base 17/18 NN, delta-eval fast paths
+// intact). INSIDE the gate both backgame NNs run and their probs are mixed,
+//   probs = (1-w)*base(17/18) + w*extra(19/20),
+// with a zone weight by anchor depth (W_A4 / W_A3 / W_ARM2) scaled by a pip
+// ramp: w = base_w * (0.5 + 0.5*clip((pips-PIP_LO)/(PIP_HI-PIP_LO), 0, 1)).
+// The committee exploits the two nets' weakly correlated errors; the tight
+// gate keeps standard-game play byte-equal to S9 outside rare deep backgames.
+// select_nn_idx reports gated positions via the BLENDED_* sentinels (>= BLENDED_SENTINEL_BASE).
+// With 19 NNs everything is disabled and behaviour is identical to before.
+
+constexpr int NUM_BACKGAME_PAIR_NNS = 19;
+constexpr int NUM_BACKGAME_PAIR_NNS_HYBRID = 21;  // 19 base + 2 extra backgame NNs
+// Stage 11 experimental: 17 standard pair NNs + 3 backgame NNs selected by the
+// CATEGORY of the backgame (which anchors are held), not by which side holds it.
+constexpr int NUM_BACKGAME_PAIR_NNS_CATEGORIZED = 20;
+
+// Backgame category, named after the anchor pairs of the reference positions
+// ("21 backgame" = anchors on the opponent's 1- and 2-points):
+//   DEEP          21, 31, 32  — both anchors on the 1/2/3 points
+//   MIDDLE        41, 42, 51, 52 — one anchor on the 1/2 point, one higher
+//   DOUBLE_ANCHOR 43, 53, 54  — exactly two anchors, none deeper than the 3-pt
+// With more than two anchors: DEEP when at least two of them are on the
+// 1/2/3 points, MIDDLE otherwise (never DOUBLE_ANCHOR).
+enum class BackgameCategory : int {
+    NONE = -1,
+    DEEP = 0,
+    MIDDLE = 1,
+    DOUBLE_ANCHOR = 2,
+};
+
+// Category of the position's backgame, from EITHER side, or NONE. Applies the
+// same detection Stage 9's select_nn_idx uses (plan pair (anchoring, racing),
+// backgame side behind on pips, >= 2 anchors in the opponent's home board —
+// the 6-point counts as an anchor for detection AND category purposes), then
+// classifies the backgame side's anchor depths per the table above. The result
+// is the same whichever perspective the board is in.
+BackgameCategory backgame_category(const Board& board);
+
+// Stage 11 phased routing: 17 standard pair NNs + the deep/middle/double trio
+// + an EARLY-CONTAINMENT NN (index 20) + a CONTAINMENT-GAME NN (index 21).
+// Chosen by the constructor flag (strategy type backgame_pair_phased).
+constexpr int NUM_BACKGAME_PAIR_NNS_PHASED = 22;
+// With a 23rd NN the phased layout adds a SNAKE NN (index 22): a far-side
+// prime containing one straggler while the opponent's other checkers are
+// crunched home (the Lamford ch. 41 / "Snake" shapes). Routed ahead of
+// everything else.
+constexpr int NUM_BACKGAME_PAIR_NNS_PHASED_SNAKE = 23;
+// With a 24th NN the phased layout adds a MASSIVE-BACKGAME NN (index 23):
+// the benchmark's massive family — a holder behind in the race with >= 3
+// anchors in the opponent's home board, or >= 2 anchors and >= 7 checkers
+// back (opponent's home board + bar) — that is neither a containment game
+// nor a snake. Routed after those two and ahead of the category trio.
+constexpr int NUM_BACKGAME_PAIR_NNS_PHASED_MASSIVE = 24;
+
+// A snake: the holder has a run of >= SNAKE_PRIME_MIN_POINTS consecutive
+// points, each held with >= 2 checkers, entirely on the opponent's half of
+// the board (indices 13-24 in the holder's frame); the opponent has >= 1
+// straggler (on the bar or in the holder's home board) and >= SNAKE_MIN_HOME
+// checkers already in its own home board. Either side may be the holder.
+// Reference implementation: scripts/snake_rule.py (the benchmark family
+// filter in scripts/backgame_benchmark.py is the same rule).
+constexpr int SNAKE_PRIME_MIN_POINTS = 4;
+constexpr int SNAKE_MIN_HOME = 10;
+bool snake_category(const Board& board);
+
+// A containment game: the escaper E has borne off a bunch of checkers and
+// has one to three checkers that got hit and must run the whole board home;
+// the container keeps hitting them with whatever it has left back — anchors,
+// blots, a prime — playing to save the gammon or occasionally to win.
+// Nothing about the container's structure is required; the position is a
+// containment game because of E's state. Evaluated for either side:
+//   E_off >= CONTAINMENT_E_OFF_MIN, and 1..CONTAINMENT_STRAGGLERS_MAX
+//   stragglers, where a straggler is an E checker on the bar or outside E's
+//   home board that still has a C checker ahead of it (one that is already
+//   past every C checker is running free and does not count).
+// Reference implementation and the same constants: scripts/containment_rule.py.
+constexpr int CONTAINMENT_E_OFF_MIN = 3;
+constexpr int CONTAINMENT_STRAGGLERS_MAX = 3;
+bool containment_category(const Board& board);
+
+// A massive back game (either side the holder): >= MASSIVE_MIN_ANCHORS
+// anchors in the opponent's home board, and either >= MASSIVE_ALT_ANCHORS
+// anchors or >= MASSIVE_BACK_MIN checkers back (opponent's home board plus
+// the bar), with the holder behind on pips; excludes containment games and
+// snakes, which are their own regions. Reference implementation: the
+// "massive backgame" family filter in scripts/backgame_benchmark.py.
+constexpr int MASSIVE_MIN_ANCHORS = 2;
+constexpr int MASSIVE_ALT_ANCHORS = 3;
+constexpr int MASSIVE_BACK_MIN = 7;
+bool massive_category(const Board& board);
+
+// Phase of a back-game-family position, independent of the plan-pair gate.
+// The holder B is the side with >= 2 anchors in the opponent's home board and
+// behind on pips (no single-anchor fallback — see the .cpp); R is the other side, and
+//   stragglers = R checkers on the bar + R checkers in B's home board.
+//   EARLY_CONTAINMENT  stragglers >= 1 and R has <= 2 checkers off
+//   LATE_CONTAINMENT   stragglers >= 1 and R has >= 3 off
+//   BEAR_IN            no stragglers and R has >= 10 checkers home or >= 1 off
+//   WAITING            everything else; NONE when no side qualifies as holder.
+// Measured 2026-09-02: on the folder benchmarks' out-of-region early
+// containment decisions (plan pair flipped, so Stage 9's gate sends them to
+// the standard nets) an early-containment NN cut 1-ply PR 4.90 -> 3.69 and
+// halved the blunders, while inside the region the category trio stayed
+// better than any phase specialist — hence the narrow routing below.
+enum class BackgamePhase : int {
+    NONE = -1,
+    WAITING = 0,
+    BEAR_IN = 1,
+    EARLY_CONTAINMENT = 2,
+    LATE_CONTAINMENT = 3,
+};
+BackgamePhase backgame_phase(const Board& board);
+// Sentinels are far above any real NN index. They used to be 21/22 ("the NN
+// count and above" for the 21-NN hybrid), which silently collided with slot
+// 21 of the 22-NN phased layout: select_nn_idx picked the containment NN and
+// every evaluator then treated the index as "blend NNs 17 and 19" instead —
+// found 2026-09-03 when two different containment nets scored identically.
+constexpr int BLENDED_SENTINEL_BASE = 1000;
+constexpr int BLENDED_PLAYER_BG_IDX = 1000;    // sentinel: gated player backgame
+constexpr int BLENDED_OPPONENT_BG_IDX = 1001;  // sentinel: gated opponent backgame
+constexpr int BACKGAME_GATE_MIN_ANCHORS = 3; // gate arm 1: 3+ anchors
+constexpr int BACKGAME_GATE_ARM2_BC = 7;     // gate arm 2: 2 anchors + big back mass
+constexpr int BACKGAME_GATE_ARM2_PIPS = 200;
+constexpr float BACKGAME_BLEND_W_A4 = 0.80f;   // zone weight: anchors >= 4
+constexpr float BACKGAME_BLEND_W_A3 = 0.70f;   // zone weight: anchors == 3
+constexpr float BACKGAME_BLEND_W_ARM2 = 0.60f; // zone weight: gate arm 2
+constexpr int BACKGAME_BLEND_PIP_LO = 170;
+constexpr int BACKGAME_BLEND_PIP_HI = 230;
+
+class BackgameAwarePairStrategy : public Strategy {
+public:
+    // Construct from vectors of weight paths and hidden sizes (length 19, 20
+    // or 21). Index 0 = PureRace, indices 1-16 = contact pairs. With 19 NNs,
+    // index 17 = player backgame, 18 = opponent backgame (Stage 9); with 21,
+    // indices 19/20 add the extra pip-routed backgame NNs (Stage 10). With 20
+    // NNs (Stage 11 experimental), indices 17/18/19 are instead the DEEP /
+    // MIDDLE / DOUBLE_ANCHOR category NNs, selected by backgame_category() —
+    // the same NN whichever side holds the backgame.
+    // phase_containment: the 22-NN Stage 11 PHASED layout (trio at 17/18/19,
+    // early-containment NN at 20, containment-game NN at 21), or 23 NNs with
+    // the snake NN at 22.
+    BackgameAwarePairStrategy(const std::vector<std::string>& weight_paths,
+                              const std::vector<int>& hidden_sizes,
+                              bool phase_containment = false);
+
+    double evaluate(const Board& board, bool pre_move_is_race) const override;
+
+    std::array<float, NN_OUTPUTS> evaluate_probs(
+        const Board& board, bool pre_move_is_race) const override;
+    std::array<float, NN_OUTPUTS> evaluate_probs(
+        const Board& board, const Board& pre_move_board) const override;
+
+    int best_move_index(const std::vector<Board>& candidates,
+                        bool pre_move_is_race) const override;
+    int best_move_index(const std::vector<Board>& candidates,
+                        const Board& pre_move_board) const override;
+
+    int evaluate_candidates_equity(
+        const std::vector<Board>& candidates,
+        const Board& pre_move_board,
+        double* equities) const override;
+
+    int batch_evaluate_candidates_equity(
+        const std::vector<Board>& candidates,
+        const Board& pre_move_board,
+        double* equities) const override;
+
+    int batch_evaluate_candidates_equity_probs(
+        const std::vector<Board>& candidates,
+        const Board& pre_move_board,
+        double* equities,
+        std::array<float, NUM_OUTPUTS>* probs_out) const override;
+
+    int batch_evaluate_candidates_best_prob(
+        const std::vector<Board>& candidates,
+        const Board& pre_move_board,
+        double* equities,
+        std::array<float, NUM_OUTPUTS>* best_probs_out) const override;
+
+    std::shared_ptr<NeuralNetwork> nn(int idx) const { return nns_[idx]; }
+
+    // Public accessor for the per-board NN selection (used by the cubeful
+    // evaluation engine's batched candidate kernel to group candidates by NN).
+    // May return the BLENDED_* sentinels (>= BLENDED_SENTINEL_BASE) on hybrid models.
+    int nn_index_for(const Board& board) const { return select_nn_idx(board); }
+
+    // Raw-NN probs for a board given an NN index; handles the blend sentinels
+    // (21/22) by evaluating both backgame NNs and mixing by pip-ramped weight.
+    // Public so the cubeful engine's batched kernel can evaluate blended
+    // candidates (which cannot share a delta-eval base).
+    std::array<float, NN_OUTPUTS> probs_with_nn(const Board& board, int nn_idx) const;
+
+    // Root routing. A search tree rooted at a position one of these nets
+    // owns is evaluated by that net throughout — every candidate, reply and
+    // leaf, races excepted — instead of each node picking its own net.
+    // Measured on the snake folder (2026-09-04): the leaves below a release
+    // move are one half-move outside the region, where the standard nets
+    // are hopeless (RMSE 0.32 on the harvest's exit rows the snake net fits
+    // at 0.047), so per-node routing valued release candidates by the wrong
+    // net and 2-ply scored worse than 1-ply. Default: the snake net on the
+    // 23-NN layout. An empty list disables root routing.
+    int root_pin_for(const Board& root) const override;
+    void set_root_pinned(std::vector<int> nn_indices) { root_pinned_ = std::move(nn_indices); }
+    const std::vector<int>& root_pinned() const { return root_pinned_; }
+
+private:
+    std::vector<std::shared_ptr<NeuralNetwork>> nns_;  // 19 (base), 20 (categorized) or 21 (hybrid)
+    bool blended_backgame_ = false;      // true when 21 NNs are loaded
+    bool categorized_backgame_ = false;  // true when 20 NNs are loaded (Stage 11)
+    bool phase_containment_ = false;     // Stage 11 phased: out-of-region early
+                                         // containment -> NN 20
+    bool snake_ = false;                 // phased with 23+ NNs: snake -> NN 22
+    bool massive_ = false;               // phased with 24 NNs: massive back game -> NN 23
+    std::vector<int> root_pinned_;       // nets that pin a search tree rooted in their region
+
+    // Determine which NN to use. Returns 0 for purerace, 1-16 for standard
+    // contact pairs, 17 for player backgame, 18 for opponent backgame; on
+    // hybrid models, the BLENDED_* sentinels for detected backgames.
+    int select_nn_idx(const Board& board) const;
+
+    double evaluate_with_nn(const Board& board, int nn_idx) const;
+    std::array<float, NN_OUTPUTS> blended_backgame_probs(const Board& board,
+                                                         bool player_bg) const;
+    bool is_purerace_nn(int nn_idx) const { return nn_idx == 0; }
+};
+
+} // namespace bgbot
