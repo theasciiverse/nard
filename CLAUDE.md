@@ -4,7 +4,8 @@ A full-screen terminal backgammon for the Asciiverse catalog, its own
 title (David, 2026-10-25), separate from the Roman Tabula in Ancient
 Games. Decided to build (David, 2026-10-25), beside chess-tui and
 termsuji (Go), which stay as they are for now. Not started: this folder
-and these notes only, no code yet.
+and these notes only, no code yet. Own git repo, branch `main`, private
+at github.com/theasciiverse/backgammon.
 
 ## Why build it
 
