@@ -36,6 +36,20 @@ backgammon family's names, and still its name from Iran to Russia
 (*nardy*). The command `backgammon` is taken by the BSD game on Debian
 and FreeBSD.
 
+## Play
+
+With [av](https://asciiverse.sh), the Asciiverse client:
+
+```
+av install nard
+av play nard
+```
+
+Or download the archive for your system from this repository's Releases,
+unpack it and run `./nard` (`nard.exe` on Windows).
+
+To build it yourself: `cargo run --release`.
+
 ## Credits
 
 - The engine: [bgsage](https://github.com/markbgsage/bgsage) by Mark
