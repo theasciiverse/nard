@@ -1,9 +1,12 @@
 # Nard
 
-Backgammon in the terminal, against a strong computer or a friend, on a
-board dressed like an inlaid tavla board: a brass wall, a braille-inlaid
-rim, ivory and crimson points, and a ground of eight-pointed stars around
-it on large terminals.
+**THE OLDEST GAME IN THE BAZAAR. THE TOUGHEST OPPONENT IN TOWN.**
+
+Backgammon in the terminal, against a neural-network opponent that doubles
+like it means it, or a friend at the same keyboard, on a board dressed like
+an inlaid tavla set from a bazaar: a brass wall, a Braille-inlaid rim, ivory
+and crimson points, and a ground of eight-pointed stars around it on large
+terminals.
 
 The computer is bgsage (Open Sage), a neural-network engine, at three
 strengths: easy (picks among the plays close to the best, never doubles),
