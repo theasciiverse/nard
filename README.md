@@ -48,9 +48,6 @@ av install nard
 av play nard
 ```
 
-Or download the archive for your system from this repository's Releases,
-unpack it and run `./nard`.
-
 To build it yourself: `cargo run --release`.
 
 ## Credits
