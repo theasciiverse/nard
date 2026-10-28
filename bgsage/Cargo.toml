@@ -3,6 +3,7 @@ name = "bgsage"
 version = "0.1.0"
 description = "A safe Rust handle on bgsage's backgammon engine"
 edition.workspace = true
+license.workspace = true
 repository.workspace = true
 
 [dependencies]

@@ -63,3 +63,8 @@ To build it yourself: `cargo run --release`.
   Pouya Hadidi (MIT).
 
 Part of [Asciiverse](https://asciiverse.sh).
+
+## Licence
+
+MIT; see [LICENSE](LICENSE). The bundled bgsage engine (`vendor/bgsage`) keeps
+its own MPL-2.0 licence.
