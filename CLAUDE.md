@@ -136,6 +136,8 @@ Crate `game/`, package and binary `nard`:
 Not yet: themes, bigger men on the larger sizes, the Jacoby rule, matches,
 saving a game.
 
+Version 0.7.0 (2026-10-28). What comes next, release by release, is in `ROADMAP.md`.
+
 ## The plan so far
 
 The look: David likes Hadidi's Backgammon TUI (2026-10-25): the board on
