@@ -31,15 +31,18 @@ const BEAROFF: (&str, &[u8]) =
     ("data/bearoff_1sided.db", include_bytes!("../../vendor/bgsage/data/bearoff_1sided.db"));
 
 /// The directory holding the engine's files: `NARD_ASSETS` if set,
-/// else a cache directory, filled on first use.
+/// else a cache directory, filled on first use: `XDG_CACHE_HOME`, on
+/// Windows `LOCALAPPDATA` (where HOME is usually not set), else
+/// `~/.cache`.
 pub fn dir() -> io::Result<PathBuf> {
     if let Some(dir) = std::env::var_os("NARD_ASSETS") {
         return Ok(dir.into());
     }
-    let cache = match std::env::var_os("XDG_CACHE_HOME") {
-        Some(dir) => PathBuf::from(dir),
-        None => PathBuf::from(std::env::var_os("HOME").ok_or(io::ErrorKind::NotFound)?).join(".cache"),
-    };
+    let var = |name| std::env::var_os(name).filter(|v| !v.is_empty()).map(PathBuf::from);
+    let cache = var("XDG_CACHE_HOME")
+        .or_else(|| if cfg!(windows) { var("LOCALAPPDATA") } else { None })
+        .or_else(|| var("HOME").map(|home| home.join(".cache")))
+        .ok_or(io::ErrorKind::NotFound)?;
     let dir = cache.join("nard").join(VERSION);
     for &(name, bytes) in MODELS.iter().chain([&BEAROFF]) {
         let path = dir.join(name);
